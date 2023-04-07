@@ -1,0 +1,34 @@
+if (command_counter <= -1)
+				{
+					int pid, status;
+					pid = fork();
+					// hijo
+					if (pid == 0)
+					{
+						// we use this funcktion to get the arguments of each command
+						getCompleteCommand(argvv, 0);
+						// pass al possible arguments to execlp, first two arguments are the same
+						int exec_result = execlp(argv_execvp[0], argv_execvp[0], argv_execvp[1], argv_execvp[2], argv_execvp[3], argv_execvp[4], argv_execvp[5], argv_execvp[6], argv_execvp[7], NULL);
+						// check for errors
+						if (exec_result == -1)
+						{
+							perror("ERROR EXECUTING execlp");
+						}
+					}
+					// padre
+					else
+					{
+						// check if the process is a background process, if not we wait
+						if (!in_background)
+						{
+							while (pid != wait(&status));
+						}
+						else
+						{
+							// if background
+							printf("[%d]\n", getpid());
+							fflush(stdout);
+						}
+					}
+				}
+				
