@@ -20,6 +20,8 @@
 
 #define MAX_COMMANDS 8
 
+//mycalc variable
+int Acc = 0;
 // ficheros por si hay redirección
 char filev[3][64];
 
@@ -64,9 +66,90 @@ void getCompleteCommand(char ***argvv, int num_command)
 		argv_execvp[i] = argvv[num_command][i];
 }
 
+
+//handle input redirectionn
+
+//handle standart output redirection
+void * handle_st_output(void * arg){
+		close(STDOUT_FILENO);
+		dup((long)arg);
+		close((long)arg);
+		pthread_exit(NULL);
+	}
+
+//handle standart error redirection
+void * handle_st_error(void * arg){
+		close(STDERR_FILENO);
+		dup((long)arg);
+		close((long)arg);
+		pthread_exit(NULL);
+	}
+
+//handle standart input redirection
+void * handle_st_input(void * arg){
+		close(STDIN_FILENO);
+		dup((long)arg);
+		close((long)arg);
+		pthread_exit(NULL);
+	}
+
+
+//mycalc
+
+void myCalc(char ***argvv){
+	char * operand = argvv[0][2];
+	//check myCalc structure, in case is wrong return error
+	if((argvv[0][1]==NULL)||(argvv[0][2]==NULL)||(strcmp(operand, "add") != 0 && strcmp(operand, "mul") != 0 && strcmp(operand, "div") != 0 )||(argvv[0][3]==NULL)){
+		char * e_message = "[ERROR] La estructura del comando es mycalc <operando_1> <add/mul/div> <operando_2>\n";
+		write(STDOUT_FILENO, e_message, strlen(e_message));
+	}
+	else{
+		//conver strings to integer and set variables
+		int op1 = atoi(argvv[0][1]);
+		int op2 = atoi(argvv[0][3]);
+		int res = 0;
+		int reminder=0;
+		char message[100];
+		//Three ifs for the calculator logic
+		if(strcmp(operand, "add") == 0 ){
+			res = op1 + op2;
+			Acc = Acc + res;
+			sprintf(message,"[OK] %d + %d = %d; Acc %d\n",op1,op2,res,Acc);
+
+		}
+		else if (strcmp(operand, "mul") == 0 ){
+			res = op1 * op2;
+			sprintf(message,"[OK] %d * %d = %d\n",op1,op2,res);
+		}
+		else{
+			res = op1 / op2;
+			reminder = op1 % op2;
+			sprintf(message,"[OK] %d / %d = %d; Resto %d\n",op1,op2,res,reminder);
+		}
+		write(STDERR_FILENO, message, strlen(message));
+	}
+}
+
+
+void getMyTime( ){
+	int hours, minutes , seconds = 0;
+	unsigned long total_seconds = mytime/1000;
+	hours = total_seconds / 3600;
+	//los que sobran de las horas
+	total_seconds %=3600;
+
+	minutes = total_seconds / 60;
+	//los que sobran de los minutos
+	seconds = total_seconds % 60;
+
+	char message[50];
+	sprintf(message,"%02d:%02d:%02d\n", hours, minutes, seconds);
+	write(STDERR_FILENO, message, strlen(message));
+}
 /**
  * Main sheell  Loop
  */
+
 int main(int argc, char *argv[])
 {
 
@@ -127,6 +210,15 @@ int main(int argc, char *argv[])
 		//************************************************************************************************
 
 		/************************ STUDENTS CODE ********************************/
+
+		//One thread for each type of redirection
+		int NUM_THREADS = 3;
+		pthread_t threads[NUM_THREADS];
+
+	
+		//Save  STDOUT_FILENO STDERR_FILENO STDIN_FILENO so we can restore them later
+		int saved_st_out, saved_st_err, saved_st_input;
+
 		if (command_counter > 0)
 		{
 			if (command_counter > MAX_COMMANDS)
@@ -136,37 +228,74 @@ int main(int argc, char *argv[])
 			else
 			{
 				// Print command
-				print_command(argvv, filev, in_background);
+				//print_command(argvv, filev, in_background);
 
-				//for single commands
-			
-				//for pipes
-				if(1)
-				{
+				//Check for internal command mycalc
+				if(strcmp(argvv[0][0], "mycalc") == 0){
+						myCalc(argvv);
+				}
 
-					// needed pipes for all cases, also need to know which pipe to use in each iteration
+				else if(strcmp(argvv[0][0],"mytime")==0){
+					
+					getMyTime();
+				}
+
+				else {
+					//for single commands
+					//for pipes
+					
+					//pipe manager tells the current pipe in the loop
 					int pipe_manager = 0;
+					//variation is used to access the pipe of the previus loop in order to connect processes, to do so we do pipe_manager + variation
 					int vari = 1;
+					//double array for storing two pipes
 					int fds[2][2];
-					// loop throw all the commands
+					// loop throw all the commands (each command will be a child process)
 					for (int i = 0; i < command_counter; i++)
 					{
+						//standart output redirection (only before creating last child)
+						if(i==command_counter-1 && filev[1][0]!='0'){
+							saved_st_out = dup(STDOUT_FILENO);
+							int fd = creat(filev[1], 0666);
+							pthread_create(&threads[1],NULL, handle_st_output,(void *)(long)fd);
+							pthread_join(threads[1],NULL);
+						}
+
+						//standart error redirection (only before creating last child)
+						if(i==command_counter-1 && filev[2][0]!='0'){
+							saved_st_err = dup(STDERR_FILENO);
+							int fd = creat(filev[2], 0666);
+							pthread_create(&threads[2],NULL, handle_st_error,(void *)(long)fd);
+							pthread_join(threads[2],NULL);
+						}
+
+						//standart input redirection (only in first child)
+						if(i==0 && filev[0][0]!='0'){
+							saved_st_input = dup(STDIN_FILENO);
+							int fd = open(filev[0], O_RDWR);
+							pthread_create(&threads[0],NULL, handle_st_input,(void *)(long)fd);
+							pthread_join(threads[0],NULL);
+						}
+
+
+						//create the pipe using pipe_manager
 						pipe(fds[pipe_manager]);
-						int pid1 = 0;
-						pid1 = fork();
+						int pid = 0;
+						pid = fork();
 
 						// padre
-						if (pid1 != 0)
+						if (pid != 0)
 						{
 							
 							if (i != 0) {
+								//only after the first child, because first child does not have previous pipe
 								//close the file descriptors of the previous pipe, even though we close them in the child we need to make sure we do the same in the parent so the EOF can reach dependent childs
 								close(fds[pipe_manager + vari][STDIN_FILENO]);
 								close(fds[pipe_manager + vari][STDOUT_FILENO]);
 							}
 							
 							if (i != command_counter - 1) {
-									// change pipe manager and variation
+									// change pipe manager and variation for next loop (of course, this does not affect current child)
 									vari = -vari;
 									pipe_manager = 1 - pipe_manager;
 								} 
@@ -176,25 +305,41 @@ int main(int argc, char *argv[])
 								if (!in_background)
 								{
 									// SOLAMENTE TIENE QUE ESPERAR EN EL CASO DEL ULTIMO
-									while (pid1 != wait(&status));
+									while (pid != wait(&status));
 								}
 								else
 								{
 									// if background
-									printf("[%d]\n", getpid());
+									printf("[%d]\n", pid);
 									fflush(stdout);
 								}
-								
-							}
 
+								//restore file descriptors
+								if(filev[0][0]!='0'){
+									close(0);
+									dup(saved_st_input);
+									close(saved_st_input);
+								}
+								if(filev[1][0]!='0'){
+									close(1);
+									dup(saved_st_out);
+									close(saved_st_out);
+								}
+								if(filev[2][0]!='0'){
+									close(2);
+									dup(saved_st_err);
+									close(saved_st_err);
+								}
+							}
 						}
 						// hijo
 						else
 						{
-							// primer elemento
+							// first element of the pipe
 							if (i == 0)
 							{
 								//only output
+								//this if check is used to also handle single commands
 								if(command_counter>1){
 									close(STDOUT_FILENO);
 									dup(fds[pipe_manager][STDOUT_FILENO]);
@@ -206,8 +351,7 @@ int main(int argc, char *argv[])
 							// ultimo elemento (la salida es la estandar)
 							else if (i == command_counter - 1)
 							{
-								// entrada
-								
+								// entrada is the last pipe, not the current pipe that is why we use vari
 								close(STDIN_FILENO);
 								dup(fds[pipe_manager + vari][STDIN_FILENO]);
 								close(fds[pipe_manager + vari][STDIN_FILENO]);
@@ -217,35 +361,35 @@ int main(int argc, char *argv[])
 							// elementos del medio
 							else
 							{
-								// entrada
+								// entrada is the last pipe, not the current pipe that is why we use vari
 								close(STDIN_FILENO);
 								dup(fds[pipe_manager + vari][STDIN_FILENO]);
 								close(fds[pipe_manager + vari][STDIN_FILENO]);
 								close(fds[pipe_manager + vari][STDOUT_FILENO]);
 
-								// salida
+								// salida is the current pipe
 								close(STDOUT_FILENO);
 								dup(fds[pipe_manager][STDOUT_FILENO]);
 								close(fds[pipe_manager][STDOUT_FILENO]);
-								close(fds[pipe_manager][STDIN_FILENO]);
-
-								
+								close(fds[pipe_manager][STDIN_FILENO]);	
 							}
 							
+							//get command arguments
 							getCompleteCommand(argvv, i);
-								int exec_result = execlp(argv_execvp[0], argv_execvp[0], argv_execvp[1], argv_execvp[2], argv_execvp[3], argv_execvp[4], argv_execvp[5], argv_execvp[6], argv_execvp[7], NULL);
-								// check for errors
-								if (exec_result == -1)
-								{
-									perror("COMMAND NOT FOUND");
-								}
-								// by closing the child we are also closing its file descriptors
-								exit(EXIT_SUCCESS);
-						}
-					
-					
+							int exec_result = execlp(argv_execvp[0], argv_execvp[0], argv_execvp[1], argv_execvp[2], argv_execvp[3], argv_execvp[4], argv_execvp[5], argv_execvp[6], argv_execvp[7], NULL);
+							// check for errors
+							if (exec_result == -1)
+							{
+								perror("COMMAND NOT FOUND");
+							}
+							// by closing the child we are also closing its file descriptors
+							exit(EXIT_SUCCESS);
 					}
+				
+				
 				}
+				
+				}	
 			}
 		}
 	}

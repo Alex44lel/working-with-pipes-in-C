@@ -1,3 +1,2 @@
-NIA1, Apellidos1, Nombre1
-NIA2, Apellidos2, Nombre2
-NIA3, Apellidos3, Nombre3
+100431297, Cañada Hinojosa, Alejandro
+100475158, Gonzalez Medina, Miguel
