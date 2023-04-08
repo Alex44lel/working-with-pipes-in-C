@@ -20,8 +20,7 @@
 
 #define MAX_COMMANDS 8
 
-//mycalc variable
-int Acc = 0;
+
 // ficheros por si hay redirección
 char filev[3][64];
 
@@ -97,6 +96,9 @@ void * handle_st_input(void * arg){
 //mycalc
 
 void myCalc(char ***argvv){
+	char* retrieved_value = getenv("Acc");
+	int Acc = atoi(retrieved_value);
+	//printf("ENTORNO %d\n",Acc);
 	char * operand = argvv[0][2];
 	//check myCalc structure, in case is wrong return error
 	if((argvv[0][1]==NULL)||(argvv[0][2]==NULL)||(strcmp(operand, "add") != 0 && strcmp(operand, "mul") != 0 && strcmp(operand, "div") != 0 )||(argvv[0][3]==NULL)){
@@ -114,6 +116,8 @@ void myCalc(char ***argvv){
 		if(strcmp(operand, "add") == 0 ){
 			res = op1 + op2;
 			Acc = Acc + res;
+			sprintf(retrieved_value, "%d", Acc);
+			setenv("Acc", retrieved_value,1);
 			sprintf(message,"[OK] %d + %d = %d; Acc %d\n",op1,op2,res,Acc);
 
 		}
@@ -153,6 +157,9 @@ void getMyTime( ){
 int main(int argc, char *argv[])
 {
 
+	//mycalc variable
+
+	setenv("Acc", "0",1);
 	/**** Do not delete this code.****/
 	int end = 0;
 	int executed_cmd_lines = -1;
@@ -214,8 +221,6 @@ int main(int argc, char *argv[])
 		//One thread for each type of redirection
 		int NUM_THREADS = 3;
 		pthread_t threads[NUM_THREADS];
-
-	
 		//Save  STDOUT_FILENO STDERR_FILENO STDIN_FILENO so we can restore them later
 		int saved_st_out, saved_st_err, saved_st_input;
 
