@@ -262,7 +262,15 @@ int main(int argc, char *argv[])
 						if(i==command_counter-1 && filev[1][0]!='0'){
 							saved_st_out = dup(STDOUT_FILENO);
 							int fd = creat(filev[1], 0666);
-							pthread_create(&threads[1],NULL, handle_st_output,(void *)(long)fd);
+							if (fd == -1) {
+								perror("Error opening/creating error file");
+								continue;
+							}
+							int rc = pthread_create(&threads[1],NULL, handle_st_output,(void *)(long)fd);
+							if (rc != 0) {
+								perror("Error creating thread for output redirection\n");
+								continue;
+							}
 							pthread_join(threads[1],NULL);
 						}
 
@@ -270,21 +278,45 @@ int main(int argc, char *argv[])
 						if(i==command_counter-1 && filev[2][0]!='0'){
 							saved_st_err = dup(STDERR_FILENO);
 							int fd = creat(filev[2], 0666);
-							pthread_create(&threads[2],NULL, handle_st_error,(void *)(long)fd);
+							if (fd == -1) {
+								perror("Error opening/creating error file");
+								continue;
+
+							}
+							int rc = pthread_create(&threads[2],NULL, handle_st_error,(void *)(long)fd);
+							if (rc != 0) {
+								perror("Error creating thread for output redirection\n");
+								continue;
+							}
 							pthread_join(threads[2],NULL);
+							
 						}
 
 						//standart input redirection (only in first child)
 						if(i==0 && filev[0][0]!='0'){
 							saved_st_input = dup(STDIN_FILENO);
 							int fd = open(filev[0], O_RDWR);
-							pthread_create(&threads[0],NULL, handle_st_input,(void *)(long)fd);
+							if (fd == -1) {
+								perror("Error opening input file");
+								continue;
+							}
+							int rc = pthread_create(&threads[0],NULL, handle_st_input,(void *)(long)fd);
+							if (rc != 0) {
+								perror("Error creating thread for output redirection\n");
+								continue;
+							}
 							pthread_join(threads[0],NULL);
+
+							
 						}
 
 
 						//create the pipe using pipe_manager
 						pipe(fds[pipe_manager]);
+						if (pipe(fds[pipe_manager]) == -1) {
+							perror("Error creating pipe");
+							continue;
+						}
 						int pid = 0;
 						pid = fork();
 
